@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asteroid Smash</title>
+  <style>
+    body {
+      margin: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background-color: #000;
+    }
+    canvas {
+      border: 2px solid white;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="800" height="600"></canvas>
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // Game constants
+    const WIDTH = canvas.width;
+    const HEIGHT = canvas.height;
+    const GRAPHITE = '#A9A9A9';  // Gray
+    const STONE = '#A9A9C7';  // Grayish Stone with a blue tint
+    const WHITE = '#FFFFFF';
+    const RED = '#FF0000';
+
+    // Rock Types and Corresponding Levels
+    const ROCK_TYPES = [
+      { color: GRAPHITE, level: 1 },
+      { color: STONE, level: 4 }
+    ];
+
+    // Asteroid class
+    class Asteroid {
+      constructor(x, y, radius, speed) {
+        this.x = x;
+        this.y = y;
+        this.radius = radius;
+        this.speed = speed;
+        this.xp = 0;
+        this.level = 1;
+        this.upgrading = false;
+      }
+
+      move(dx, dy) {
+        this.x += dx * this.speed;
+        this.y += dy * this.speed;
+
+        // Keep asteroid within bounds
+        if (this.x - this.radius < 0) this.x = this.radius;
+        if (this.x + this.radius > WIDTH) this.x = WIDTH - this.radius;
+        if (this.y - this.radius < 0) this.y = this.radius;
+        if (this.y + this.radius > HEIGHT) this.y = HEIGHT - this.radius;
+      }
+
+      draw() {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fillStyle = RED;
+        ctx.fill();
+      }
+
+      upgrade() {
+        this.upgrading = true;
+      }
+
+      applyUpgrade(choice) {
+        if (choice === 'size') {
+          this.radius += 5;
+        } else if (choice === 'speed') {
+          this.speed += 1;
+        }
+        this.xp = 0;
+        this.level++;
+        this.upgrading = false;
+      }
+
+      gainXP(amount) {
+        this.xp += amount;
+        if (this.xp >= this.level * 100) {
+          this.upgrade();
+        }
+      }
+    }
+
+    // Rubble class
+    class Rubble {
+      constructor(x, y, radius, color, levelRequired) {
+        this.x = x;
+        this.y = y;
+        this.radius = radius;
+        this.color = color;
+        this.levelRequired = levelRequired;
+      }
+
+      draw() {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fillStyle = this.color;
+        ctx.fill();
+      }
+
+      isHit(asteroid) {
+        const dist = Math.sqrt((this.x - asteroid.x) ** 2 + (this.y - asteroid.y) ** 2);
+        return dist < this.radius + asteroid.radius;
+      }
+
+      breakIntoPieces() {
+        const pieces = [];
+        const numPieces = Math.floor(Math.random() * 3) + 2;
+        for (let i = 0; i < numPieces; i++) {
+          pieces.push(new Rubble(
+            this.x + Math.random() * 10 - 5,
+            this.y + Math.random() * 10 - 5,
+            Math.random() * 10 + 5,
+            this.color,
+            this.levelRequired
+          ));
+        }
+        return pieces;
+      }
+
+      canBeBrokenBy(asteroid) {
+        return asteroid.level >= this.levelRequired;
+      }
+    }
+
+    // Setup the game objects
+    const asteroid = new Asteroid(WIDTH / 2, HEIGHT / 2, 30, 5);
+    const rubble = [];
+
+    // Create rubble objects
+    for (let i = 0; i < 6; i++) {
+      const level = Math.floor(Math.random() * ROCK_TYPES.length);
+      const rockType = ROCK_TYPES[level];
+      rubble.push(new Rubble(
+        Math.random() * WIDTH,
+        Math.random() * HEIGHT,
+        Math.random() * 30 + 20,
+        rockType.color,
+        rockType.level
+      ));
+    }
+
+    // Handle key events
+    let dx = 0;
+    let dy = 0;
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'ArrowLeft') dx = -1;
+      if (event.key === 'ArrowRight') dx = 1;
+      if (event.key === 'ArrowUp') dy = -1;
+      if (event.key === 'ArrowDown') dy = 1;
+
+      if (event.key === 's' && asteroid.upgrading) {
+        asteroid.applyUpgrade('size');
+      } else if (event.key === 'p' && asteroid.upgrading) {
+        asteroid.applyUpgrade('speed');
+      }
+    });
+
+    // Game loop
+    function gameLoop() {
+      ctx.clearRect(0, 0, WIDTH, HEIGHT);
+
+      // Move the asteroid
+      asteroid.move(dx, dy);
+
+      // Check for collisions
+      const newRubble = [];
+      rubble.forEach((rock) => {
+        if (rock.isHit(asteroid) && rock.canBeBrokenBy(asteroid)) {
+          asteroid.gainXP(20);
+          newRubble.push(...rock.breakIntoPieces());
+        } else {
+          newRubble.push(rock);
+        }
+      });
+      rubble.length = 0;
+      rubble.push(...newRubble);
+
+      // Draw everything
+      asteroid.draw();
+      rubble.forEach((rock) => rock.draw());
+
+      // Show XP and Level
+      ctx.font = '24px Arial';
+      ctx.fillStyle = WHITE;
+      ctx.fillText(`XP: ${asteroid.xp}  Level: ${asteroid.level}`, 10, 30);
+
+      // If upgrading, show upgrade options
+      if (asteroid.upgrading) {
+        ctx.font = '32px Arial';
+        ctx.fillText('Choose Upgrade: [S]ize [P]speed', WIDTH / 2 - 150, HEIGHT / 2);
+      }
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    // Start the game loop
+    gameLoop();
+  </script>
+</body>
+</html>
